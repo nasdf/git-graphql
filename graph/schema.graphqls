@@ -1,0 +1,62 @@
+interface Object {
+  hash: ID!
+  type: String!
+}
+
+type Signature {
+  name: String
+  email: String
+  when: String 
+}
+
+type Tag implements Object {
+  hash: ID!
+  type: String!
+  name: String!
+  tagger: Signature
+  message: String
+  signature: String
+  targetType: String
+  target: Object!
+}
+
+type Commit implements Object {
+  hash: ID!
+  type: String!
+  author: Signature
+  committer: Signature
+  signature: String
+  message: String
+  tree: Tree!
+  parents: [Commit!]!
+}
+
+type TreeEntry implements Object {
+  hash: ID!
+  type: String!
+  name: String!
+  mode: String!
+}
+
+type Tree implements Object {
+  hash: ID!
+  type: String!
+  entries: [TreeEntry!]!
+}
+
+type Blob implements Object {
+  hash: ID!
+  type: String!
+  data: String!
+}
+
+type Reference {
+  name: String!
+  type: String!
+  hash: String
+  target: String
+}
+
+type Query {
+  branches: [Reference!]!
+}
