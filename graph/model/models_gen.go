@@ -15,43 +15,25 @@ type Blob struct {
 func (Blob) IsObject() {}
 
 type Commit struct {
-	Hash      string     `json:"hash"`
-	Type      string     `json:"type"`
-	Author    *Signature `json:"author"`
-	Committer *Signature `json:"committer"`
-	Signature *string    `json:"signature"`
-	Message   *string    `json:"message"`
-	Tree      *Tree      `json:"tree"`
-	Parents   []*Commit  `json:"parents"`
+	Hash         string     `json:"hash"`
+	Type         string     `json:"type"`
+	Author       *Signature `json:"author"`
+	Committer    *Signature `json:"committer"`
+	Signature    string     `json:"signature"`
+	Message      string     `json:"message"`
+	Tree         *Tree      `json:"tree"`
+	TreeHash     string     `json:"treeHash"`
+	Parents      []*Commit  `json:"parents"`
+	ParentHashes []string   `json:"parentHashes"`
 }
 
 func (Commit) IsObject() {}
 
-type Reference struct {
-	Name   string  `json:"name"`
-	Type   string  `json:"type"`
-	Hash   *string `json:"hash"`
-	Target *string `json:"target"`
-}
-
 type Signature struct {
-	Name  *string `json:"name"`
-	Email *string `json:"email"`
-	When  *string `json:"when"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	When  string `json:"when"`
 }
-
-type Tag struct {
-	Hash       string     `json:"hash"`
-	Type       string     `json:"type"`
-	Name       string     `json:"name"`
-	Tagger     *Signature `json:"tagger"`
-	Message    *string    `json:"message"`
-	Signature  *string    `json:"signature"`
-	TargetType *string    `json:"targetType"`
-	Target     Object     `json:"target"`
-}
-
-func (Tag) IsObject() {}
 
 type Tree struct {
 	Hash    string       `json:"hash"`
@@ -62,10 +44,8 @@ type Tree struct {
 func (Tree) IsObject() {}
 
 type TreeEntry struct {
-	Hash string `json:"hash"`
-	Type string `json:"type"`
-	Name string `json:"name"`
-	Mode string `json:"mode"`
+	Hash   string `json:"hash"`
+	Name   string `json:"name"`
+	Mode   string `json:"mode"`
+	Object Object `json:"object"`
 }
-
-func (TreeEntry) IsObject() {}

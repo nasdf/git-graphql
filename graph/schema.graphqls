@@ -4,38 +4,29 @@ interface Object {
 }
 
 type Signature {
-  name: String
-  email: String
-  when: String 
-}
-
-type Tag implements Object {
-  hash: ID!
-  type: String!
   name: String!
-  tagger: Signature
-  message: String
-  signature: String
-  targetType: String
-  target: Object!
+  email: String!
+  when: String!
 }
 
 type Commit implements Object {
   hash: ID!
   type: String!
-  author: Signature
-  committer: Signature
-  signature: String
-  message: String
+  author: Signature!
+  committer: Signature!
+  signature: String!
+  message: String!
   tree: Tree!
+  treeHash: String!
   parents: [Commit!]!
+  parentHashes: [String!]!
 }
 
-type TreeEntry implements Object {
+type TreeEntry {
   hash: ID!
-  type: String!
   name: String!
   mode: String!
+  object: Object!
 }
 
 type Tree implements Object {
@@ -50,13 +41,10 @@ type Blob implements Object {
   data: String!
 }
 
-type Reference {
-  name: String!
-  type: String!
-  hash: String
-  target: String
-}
-
 type Query {
-  branches: [Reference!]!
+  commit(hash: ID!): Commit
+  blob(hash: ID!): Blob
+  tree(hash: ID!): Tree
+  revision(name: String!): Commit
+  commits: [Commit!]!
 }

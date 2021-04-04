@@ -66,3 +66,13 @@ models:
     fields:
       target:
         resolver: true
+
+  TreeEntry:
+    fields:
+      object:
+        resolver: true
+
+  Blob:
+    fields:
+      data:
+        resolver: true

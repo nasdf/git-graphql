@@ -36,9 +36,10 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Blob() BlobResolver
 	Commit() CommitResolver
 	Query() QueryResolver
-	Tag() TagResolver
+	TreeEntry() TreeEntryResolver
 }
 
 type DirectiveRoot struct {
@@ -52,42 +53,30 @@ type ComplexityRoot struct {
 	}
 
 	Commit struct {
-		Author    func(childComplexity int) int
-		Committer func(childComplexity int) int
-		Hash      func(childComplexity int) int
-		Message   func(childComplexity int) int
-		Parents   func(childComplexity int) int
-		Signature func(childComplexity int) int
-		Tree      func(childComplexity int) int
-		Type      func(childComplexity int) int
+		Author       func(childComplexity int) int
+		Committer    func(childComplexity int) int
+		Hash         func(childComplexity int) int
+		Message      func(childComplexity int) int
+		ParentHashes func(childComplexity int) int
+		Parents      func(childComplexity int) int
+		Signature    func(childComplexity int) int
+		Tree         func(childComplexity int) int
+		TreeHash     func(childComplexity int) int
+		Type         func(childComplexity int) int
 	}
 
 	Query struct {
-		Branches func(childComplexity int) int
-	}
-
-	Reference struct {
-		Hash   func(childComplexity int) int
-		Name   func(childComplexity int) int
-		Target func(childComplexity int) int
-		Type   func(childComplexity int) int
+		Blob     func(childComplexity int, hash string) int
+		Commit   func(childComplexity int, hash string) int
+		Commits  func(childComplexity int) int
+		Revision func(childComplexity int, name string) int
+		Tree     func(childComplexity int, hash string) int
 	}
 
 	Signature struct {
 		Email func(childComplexity int) int
 		Name  func(childComplexity int) int
 		When  func(childComplexity int) int
-	}
-
-	Tag struct {
-		Hash       func(childComplexity int) int
-		Message    func(childComplexity int) int
-		Name       func(childComplexity int) int
-		Signature  func(childComplexity int) int
-		Tagger     func(childComplexity int) int
-		Target     func(childComplexity int) int
-		TargetType func(childComplexity int) int
-		Type       func(childComplexity int) int
 	}
 
 	Tree struct {
@@ -97,22 +86,30 @@ type ComplexityRoot struct {
 	}
 
 	TreeEntry struct {
-		Hash func(childComplexity int) int
-		Mode func(childComplexity int) int
-		Name func(childComplexity int) int
-		Type func(childComplexity int) int
+		Hash   func(childComplexity int) int
+		Mode   func(childComplexity int) int
+		Name   func(childComplexity int) int
+		Object func(childComplexity int) int
 	}
 }
 
+type BlobResolver interface {
+	Data(ctx context.Context, obj *model.Blob) (string, error)
+}
 type CommitResolver interface {
 	Tree(ctx context.Context, obj *model.Commit) (*model.Tree, error)
+
 	Parents(ctx context.Context, obj *model.Commit) ([]*model.Commit, error)
 }
 type QueryResolver interface {
-	Branches(ctx context.Context) ([]*model.Reference, error)
+	Commit(ctx context.Context, hash string) (*model.Commit, error)
+	Blob(ctx context.Context, hash string) (*model.Blob, error)
+	Tree(ctx context.Context, hash string) (*model.Tree, error)
+	Revision(ctx context.Context, name string) (*model.Commit, error)
+	Commits(ctx context.Context) ([]*model.Commit, error)
 }
-type TagResolver interface {
-	Target(ctx context.Context, obj *model.Tag) (model.Object, error)
+type TreeEntryResolver interface {
+	Object(ctx context.Context, obj *model.TreeEntry) (model.Object, error)
 }
 
 type executableSchema struct {
@@ -179,6 +176,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Commit.Message(childComplexity), true
 
+	case "Commit.parentHashes":
+		if e.complexity.Commit.ParentHashes == nil {
+			break
+		}
+
+		return e.complexity.Commit.ParentHashes(childComplexity), true
+
 	case "Commit.parents":
 		if e.complexity.Commit.Parents == nil {
 			break
@@ -200,6 +204,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Commit.Tree(childComplexity), true
 
+	case "Commit.treeHash":
+		if e.complexity.Commit.TreeHash == nil {
+			break
+		}
+
+		return e.complexity.Commit.TreeHash(childComplexity), true
+
 	case "Commit.type":
 		if e.complexity.Commit.Type == nil {
 			break
@@ -207,40 +218,60 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Commit.Type(childComplexity), true
 
-	case "Query.branches":
-		if e.complexity.Query.Branches == nil {
+	case "Query.blob":
+		if e.complexity.Query.Blob == nil {
 			break
 		}
 
-		return e.complexity.Query.Branches(childComplexity), true
+		args, err := ec.field_Query_blob_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
 
-	case "Reference.hash":
-		if e.complexity.Reference.Hash == nil {
+		return e.complexity.Query.Blob(childComplexity, args["hash"].(string)), true
+
+	case "Query.commit":
+		if e.complexity.Query.Commit == nil {
 			break
 		}
 
-		return e.complexity.Reference.Hash(childComplexity), true
+		args, err := ec.field_Query_commit_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
 
-	case "Reference.name":
-		if e.complexity.Reference.Name == nil {
+		return e.complexity.Query.Commit(childComplexity, args["hash"].(string)), true
+
+	case "Query.commits":
+		if e.complexity.Query.Commits == nil {
 			break
 		}
 
-		return e.complexity.Reference.Name(childComplexity), true
+		return e.complexity.Query.Commits(childComplexity), true
 
-	case "Reference.target":
-		if e.complexity.Reference.Target == nil {
+	case "Query.revision":
+		if e.complexity.Query.Revision == nil {
 			break
 		}
 
-		return e.complexity.Reference.Target(childComplexity), true
+		args, err := ec.field_Query_revision_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
 
-	case "Reference.type":
-		if e.complexity.Reference.Type == nil {
+		return e.complexity.Query.Revision(childComplexity, args["name"].(string)), true
+
+	case "Query.tree":
+		if e.complexity.Query.Tree == nil {
 			break
 		}
 
-		return e.complexity.Reference.Type(childComplexity), true
+		args, err := ec.field_Query_tree_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Tree(childComplexity, args["hash"].(string)), true
 
 	case "Signature.email":
 		if e.complexity.Signature.Email == nil {
@@ -262,62 +293,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Signature.When(childComplexity), true
-
-	case "Tag.hash":
-		if e.complexity.Tag.Hash == nil {
-			break
-		}
-
-		return e.complexity.Tag.Hash(childComplexity), true
-
-	case "Tag.message":
-		if e.complexity.Tag.Message == nil {
-			break
-		}
-
-		return e.complexity.Tag.Message(childComplexity), true
-
-	case "Tag.name":
-		if e.complexity.Tag.Name == nil {
-			break
-		}
-
-		return e.complexity.Tag.Name(childComplexity), true
-
-	case "Tag.signature":
-		if e.complexity.Tag.Signature == nil {
-			break
-		}
-
-		return e.complexity.Tag.Signature(childComplexity), true
-
-	case "Tag.tagger":
-		if e.complexity.Tag.Tagger == nil {
-			break
-		}
-
-		return e.complexity.Tag.Tagger(childComplexity), true
-
-	case "Tag.target":
-		if e.complexity.Tag.Target == nil {
-			break
-		}
-
-		return e.complexity.Tag.Target(childComplexity), true
-
-	case "Tag.targetType":
-		if e.complexity.Tag.TargetType == nil {
-			break
-		}
-
-		return e.complexity.Tag.TargetType(childComplexity), true
-
-	case "Tag.type":
-		if e.complexity.Tag.Type == nil {
-			break
-		}
-
-		return e.complexity.Tag.Type(childComplexity), true
 
 	case "Tree.entries":
 		if e.complexity.Tree.Entries == nil {
@@ -361,12 +336,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.TreeEntry.Name(childComplexity), true
 
-	case "TreeEntry.type":
-		if e.complexity.TreeEntry.Type == nil {
+	case "TreeEntry.object":
+		if e.complexity.TreeEntry.Object == nil {
 			break
 		}
 
-		return e.complexity.TreeEntry.Type(childComplexity), true
+		return e.complexity.TreeEntry.Object(childComplexity), true
 
 	}
 	return 0, false
@@ -424,38 +399,29 @@ var sources = []*ast.Source{
 }
 
 type Signature {
-  name: String
-  email: String
-  when: String 
-}
-
-type Tag implements Object {
-  hash: ID!
-  type: String!
   name: String!
-  tagger: Signature
-  message: String
-  signature: String
-  targetType: String
-  target: Object!
+  email: String!
+  when: String!
 }
 
 type Commit implements Object {
   hash: ID!
   type: String!
-  author: Signature
-  committer: Signature
-  signature: String
-  message: String
+  author: Signature!
+  committer: Signature!
+  signature: String!
+  message: String!
   tree: Tree!
+  treeHash: String!
   parents: [Commit!]!
+  parentHashes: [String!]!
 }
 
-type TreeEntry implements Object {
+type TreeEntry {
   hash: ID!
-  type: String!
   name: String!
   mode: String!
+  object: Object!
 }
 
 type Tree implements Object {
@@ -470,15 +436,12 @@ type Blob implements Object {
   data: String!
 }
 
-type Reference {
-  name: String!
-  type: String!
-  hash: String
-  target: String
-}
-
 type Query {
-  branches: [Reference!]!
+  commit(hash: ID!): Commit
+  blob(hash: ID!): Blob
+  tree(hash: ID!): Tree
+  revision(name: String!): Commit
+  commits: [Commit!]!
 }`, BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
@@ -499,6 +462,66 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 		}
 	}
 	args["name"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_blob_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["hash"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("hash"))
+		arg0, err = ec.unmarshalNID2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["hash"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_commit_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["hash"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("hash"))
+		arg0, err = ec.unmarshalNID2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["hash"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_revision_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["name"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["name"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_tree_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["hash"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("hash"))
+		arg0, err = ec.unmarshalNID2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["hash"] = arg0
 	return args, nil
 }
 
@@ -621,14 +644,14 @@ func (ec *executionContext) _Blob_data(ctx context.Context, field graphql.Collec
 		Object:     "Blob",
 		Field:      field,
 		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 	}
 
 	ctx = graphql.WithFieldContext(ctx, fc)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Data, nil
+		return ec.resolvers.Blob().Data(rctx, obj)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -740,11 +763,14 @@ func (ec *executionContext) _Commit_author(ctx context.Context, field graphql.Co
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
 	res := resTmp.(*model.Signature)
 	fc.Result = res
-	return ec.marshalOSignature2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐSignature(ctx, field.Selections, res)
+	return ec.marshalNSignature2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐSignature(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Commit_committer(ctx context.Context, field graphql.CollectedField, obj *model.Commit) (ret graphql.Marshaler) {
@@ -772,11 +798,14 @@ func (ec *executionContext) _Commit_committer(ctx context.Context, field graphql
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
 	res := resTmp.(*model.Signature)
 	fc.Result = res
-	return ec.marshalOSignature2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐSignature(ctx, field.Selections, res)
+	return ec.marshalNSignature2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐSignature(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Commit_signature(ctx context.Context, field graphql.CollectedField, obj *model.Commit) (ret graphql.Marshaler) {
@@ -804,11 +833,14 @@ func (ec *executionContext) _Commit_signature(ctx context.Context, field graphql
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.(*string)
+	res := resTmp.(string)
 	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Commit_message(ctx context.Context, field graphql.CollectedField, obj *model.Commit) (ret graphql.Marshaler) {
@@ -836,11 +868,14 @@ func (ec *executionContext) _Commit_message(ctx context.Context, field graphql.C
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.(*string)
+	res := resTmp.(string)
 	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Commit_tree(ctx context.Context, field graphql.CollectedField, obj *model.Commit) (ret graphql.Marshaler) {
@@ -878,6 +913,41 @@ func (ec *executionContext) _Commit_tree(ctx context.Context, field graphql.Coll
 	return ec.marshalNTree2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐTree(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _Commit_treeHash(ctx context.Context, field graphql.CollectedField, obj *model.Commit) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Commit",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.TreeHash, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Commit_parents(ctx context.Context, field graphql.CollectedField, obj *model.Commit) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -913,7 +983,198 @@ func (ec *executionContext) _Commit_parents(ctx context.Context, field graphql.C
 	return ec.marshalNCommit2ᚕᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐCommitᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Query_branches(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+func (ec *executionContext) _Commit_parentHashes(ctx context.Context, field graphql.CollectedField, obj *model.Commit) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Commit",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   false,
+		IsResolver: false,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ParentHashes, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]string)
+	fc.Result = res
+	return ec.marshalNString2ᚕstringᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_commit(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_commit_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Commit(rctx, args["hash"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Commit)
+	fc.Result = res
+	return ec.marshalOCommit2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐCommit(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_blob(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_blob_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Blob(rctx, args["hash"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Blob)
+	fc.Result = res
+	return ec.marshalOBlob2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐBlob(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_tree(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_tree_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Tree(rctx, args["hash"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Tree)
+	fc.Result = res
+	return ec.marshalOTree2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐTree(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_revision(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Query_revision_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Revision(rctx, args["name"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Commit)
+	fc.Result = res
+	return ec.marshalOCommit2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐCommit(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_commits(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
 			ec.Error(ctx, ec.Recover(ctx, r))
@@ -931,7 +1192,7 @@ func (ec *executionContext) _Query_branches(ctx context.Context, field graphql.C
 	ctx = graphql.WithFieldContext(ctx, fc)
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Branches(rctx)
+		return ec.resolvers.Query().Commits(rctx)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -943,9 +1204,9 @@ func (ec *executionContext) _Query_branches(ctx context.Context, field graphql.C
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model.Reference)
+	res := resTmp.([]*model.Commit)
 	fc.Result = res
-	return ec.marshalNReference2ᚕᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐReferenceᚄ(ctx, field.Selections, res)
+	return ec.marshalNCommit2ᚕᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐCommitᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -1019,140 +1280,6 @@ func (ec *executionContext) _Query___schema(ctx context.Context, field graphql.C
 	return ec.marshalO__Schema2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐSchema(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Reference_name(ctx context.Context, field graphql.CollectedField, obj *model.Reference) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Reference",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Name, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Reference_type(ctx context.Context, field graphql.CollectedField, obj *model.Reference) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Reference",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Type, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Reference_hash(ctx context.Context, field graphql.CollectedField, obj *model.Reference) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Reference",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Hash, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Reference_target(ctx context.Context, field graphql.CollectedField, obj *model.Reference) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Reference",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Target, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
 func (ec *executionContext) _Signature_name(ctx context.Context, field graphql.CollectedField, obj *model.Signature) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1178,11 +1305,14 @@ func (ec *executionContext) _Signature_name(ctx context.Context, field graphql.C
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.(*string)
+	res := resTmp.(string)
 	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Signature_email(ctx context.Context, field graphql.CollectedField, obj *model.Signature) (ret graphql.Marshaler) {
@@ -1210,11 +1340,14 @@ func (ec *executionContext) _Signature_email(ctx context.Context, field graphql.
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.(*string)
+	res := resTmp.(string)
 	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Signature_when(ctx context.Context, field graphql.CollectedField, obj *model.Signature) (ret graphql.Marshaler) {
@@ -1242,73 +1375,6 @@ func (ec *executionContext) _Signature_when(ctx context.Context, field graphql.C
 		return graphql.Null
 	}
 	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_hash(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Hash, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNID2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_type(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Type, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
 		if !graphql.HasFieldError(ctx, fc) {
 			ec.Errorf(ctx, "must not be null")
 		}
@@ -1317,204 +1383,6 @@ func (ec *executionContext) _Tag_type(ctx context.Context, field graphql.Collect
 	res := resTmp.(string)
 	fc.Result = res
 	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_name(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Name, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_tagger(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Tagger, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*model.Signature)
-	fc.Result = res
-	return ec.marshalOSignature2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐSignature(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_message(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Message, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_signature(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Signature, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_targetType(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.TargetType, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*string)
-	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Tag_target(ctx context.Context, field graphql.CollectedField, obj *model.Tag) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Tag",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   true,
-		IsResolver: true,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tag().Target(rctx, obj)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(model.Object)
-	fc.Result = res
-	return ec.marshalNObject2githubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐObject(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Tree_hash(ctx context.Context, field graphql.CollectedField, obj *model.Tree) (ret graphql.Marshaler) {
@@ -1657,41 +1525,6 @@ func (ec *executionContext) _TreeEntry_hash(ctx context.Context, field graphql.C
 	return ec.marshalNID2string(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _TreeEntry_type(ctx context.Context, field graphql.CollectedField, obj *model.TreeEntry) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "TreeEntry",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   false,
-		IsResolver: false,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Type, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
 func (ec *executionContext) _TreeEntry_name(ctx context.Context, field graphql.CollectedField, obj *model.TreeEntry) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1760,6 +1593,41 @@ func (ec *executionContext) _TreeEntry_mode(ctx context.Context, field graphql.C
 	res := resTmp.(string)
 	fc.Result = res
 	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _TreeEntry_object(ctx context.Context, field graphql.CollectedField, obj *model.TreeEntry) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "TreeEntry",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.TreeEntry().Object(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.Object)
+	fc.Result = res
+	return ec.marshalNObject2githubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐObject(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) (ret graphql.Marshaler) {
@@ -2857,13 +2725,6 @@ func (ec *executionContext) _Object(ctx context.Context, sel ast.SelectionSet, o
 	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
-	case model.Tag:
-		return ec._Tag(ctx, sel, &obj)
-	case *model.Tag:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._Tag(ctx, sel, obj)
 	case model.Commit:
 		return ec._Commit(ctx, sel, &obj)
 	case *model.Commit:
@@ -2871,13 +2732,6 @@ func (ec *executionContext) _Object(ctx context.Context, sel ast.SelectionSet, o
 			return graphql.Null
 		}
 		return ec._Commit(ctx, sel, obj)
-	case model.TreeEntry:
-		return ec._TreeEntry(ctx, sel, &obj)
-	case *model.TreeEntry:
-		if obj == nil {
-			return graphql.Null
-		}
-		return ec._TreeEntry(ctx, sel, obj)
 	case model.Tree:
 		return ec._Tree(ctx, sel, &obj)
 	case *model.Tree:
@@ -2915,18 +2769,27 @@ func (ec *executionContext) _Blob(ctx context.Context, sel ast.SelectionSet, obj
 		case "hash":
 			out.Values[i] = ec._Blob_hash(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "type":
 			out.Values[i] = ec._Blob_type(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "data":
-			out.Values[i] = ec._Blob_data(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Blob_data(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2961,12 +2824,24 @@ func (ec *executionContext) _Commit(ctx context.Context, sel ast.SelectionSet, o
 			}
 		case "author":
 			out.Values[i] = ec._Commit_author(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		case "committer":
 			out.Values[i] = ec._Commit_committer(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		case "signature":
 			out.Values[i] = ec._Commit_signature(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		case "message":
 			out.Values[i] = ec._Commit_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		case "tree":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
@@ -2981,6 +2856,11 @@ func (ec *executionContext) _Commit(ctx context.Context, sel ast.SelectionSet, o
 				}
 				return res
 			})
+		case "treeHash":
+			out.Values[i] = ec._Commit_treeHash(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		case "parents":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
@@ -2995,6 +2875,11 @@ func (ec *executionContext) _Commit(ctx context.Context, sel ast.SelectionSet, o
 				}
 				return res
 			})
+		case "parentHashes":
+			out.Values[i] = ec._Commit_parentHashes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3021,7 +2906,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Query")
-		case "branches":
+		case "commit":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
 				defer func() {
@@ -3029,7 +2914,51 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._Query_branches(ctx, field)
+				res = ec._Query_commit(ctx, field)
+				return res
+			})
+		case "blob":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_blob(ctx, field)
+				return res
+			})
+		case "tree":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_tree(ctx, field)
+				return res
+			})
+		case "revision":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_revision(ctx, field)
+				return res
+			})
+		case "commits":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_commits(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}
@@ -3039,42 +2968,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec._Query___type(ctx, field)
 		case "__schema":
 			out.Values[i] = ec._Query___schema(ctx, field)
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch()
-	if invalids > 0 {
-		return graphql.Null
-	}
-	return out
-}
-
-var referenceImplementors = []string{"Reference"}
-
-func (ec *executionContext) _Reference(ctx context.Context, sel ast.SelectionSet, obj *model.Reference) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, referenceImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	var invalids uint32
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("Reference")
-		case "name":
-			out.Values[i] = ec._Reference_name(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
-		case "type":
-			out.Values[i] = ec._Reference_type(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
-		case "hash":
-			out.Values[i] = ec._Reference_hash(ctx, field, obj)
-		case "target":
-			out.Values[i] = ec._Reference_target(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3099,69 +2992,19 @@ func (ec *executionContext) _Signature(ctx context.Context, sel ast.SelectionSet
 			out.Values[i] = graphql.MarshalString("Signature")
 		case "name":
 			out.Values[i] = ec._Signature_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
 		case "email":
 			out.Values[i] = ec._Signature_email(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
 		case "when":
 			out.Values[i] = ec._Signature_when(ctx, field, obj)
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch()
-	if invalids > 0 {
-		return graphql.Null
-	}
-	return out
-}
-
-var tagImplementors = []string{"Tag", "Object"}
-
-func (ec *executionContext) _Tag(ctx context.Context, sel ast.SelectionSet, obj *model.Tag) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, tagImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	var invalids uint32
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("Tag")
-		case "hash":
-			out.Values[i] = ec._Tag_hash(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&invalids, 1)
+				invalids++
 			}
-		case "type":
-			out.Values[i] = ec._Tag_type(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&invalids, 1)
-			}
-		case "name":
-			out.Values[i] = ec._Tag_name(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				atomic.AddUint32(&invalids, 1)
-			}
-		case "tagger":
-			out.Values[i] = ec._Tag_tagger(ctx, field, obj)
-		case "message":
-			out.Values[i] = ec._Tag_message(ctx, field, obj)
-		case "signature":
-			out.Values[i] = ec._Tag_signature(ctx, field, obj)
-		case "targetType":
-			out.Values[i] = ec._Tag_targetType(ctx, field, obj)
-		case "target":
-			field := field
-			out.Concurrently(i, func() (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Tag_target(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&invalids, 1)
-				}
-				return res
-			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3210,7 +3053,7 @@ func (ec *executionContext) _Tree(ctx context.Context, sel ast.SelectionSet, obj
 	return out
 }
 
-var treeEntryImplementors = []string{"TreeEntry", "Object"}
+var treeEntryImplementors = []string{"TreeEntry"}
 
 func (ec *executionContext) _TreeEntry(ctx context.Context, sel ast.SelectionSet, obj *model.TreeEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, treeEntryImplementors)
@@ -3224,23 +3067,32 @@ func (ec *executionContext) _TreeEntry(ctx context.Context, sel ast.SelectionSet
 		case "hash":
 			out.Values[i] = ec._TreeEntry_hash(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
-			}
-		case "type":
-			out.Values[i] = ec._TreeEntry_type(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._TreeEntry_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
 		case "mode":
 			out.Values[i] = ec._TreeEntry_mode(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				invalids++
+				atomic.AddUint32(&invalids, 1)
 			}
+		case "object":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._TreeEntry_object(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3584,51 +3436,14 @@ func (ec *executionContext) marshalNObject2githubᚗcomᚋnasdfᚋgitᚑgraphql�
 	return ec._Object(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNReference2ᚕᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐReferenceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Reference) graphql.Marshaler {
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalNReference2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐReference(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-	return ret
-}
-
-func (ec *executionContext) marshalNReference2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐReference(ctx context.Context, sel ast.SelectionSet, v *model.Reference) graphql.Marshaler {
+func (ec *executionContext) marshalNSignature2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐSignature(ctx context.Context, sel ast.SelectionSet, v *model.Signature) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "must not be null")
 		}
 		return graphql.Null
 	}
-	return ec._Reference(ctx, sel, v)
+	return ec._Signature(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v interface{}) (string, error) {
@@ -3644,6 +3459,36 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNString2ᚕstringᚄ(ctx context.Context, v interface{}) ([]string, error) {
+	var vSlice []interface{}
+	if v != nil {
+		if tmp1, ok := v.([]interface{}); ok {
+			vSlice = tmp1
+		} else {
+			vSlice = []interface{}{v}
+		}
+	}
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	return ret
 }
 
 func (ec *executionContext) marshalNTree2githubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐTree(ctx context.Context, sel ast.SelectionSet, v model.Tree) graphql.Marshaler {
@@ -3936,6 +3781,13 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 	return res
 }
 
+func (ec *executionContext) marshalOBlob2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐBlob(ctx context.Context, sel ast.SelectionSet, v *model.Blob) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Blob(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalOBoolean2bool(ctx context.Context, v interface{}) (bool, error) {
 	res, err := graphql.UnmarshalBoolean(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -3960,11 +3812,11 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return graphql.MarshalBoolean(*v)
 }
 
-func (ec *executionContext) marshalOSignature2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐSignature(ctx context.Context, sel ast.SelectionSet, v *model.Signature) graphql.Marshaler {
+func (ec *executionContext) marshalOCommit2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐCommit(ctx context.Context, sel ast.SelectionSet, v *model.Commit) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
-	return ec._Signature(ctx, sel, v)
+	return ec._Commit(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOString2string(ctx context.Context, v interface{}) (string, error) {
@@ -3989,6 +3841,13 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 		return graphql.Null
 	}
 	return graphql.MarshalString(*v)
+}
+
+func (ec *executionContext) marshalOTree2ᚖgithubᚗcomᚋnasdfᚋgitᚑgraphqlᚋgraphᚋmodelᚐTree(ctx context.Context, sel ast.SelectionSet, v *model.Tree) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Tree(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalO__EnumValue2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐEnumValueᚄ(ctx context.Context, sel ast.SelectionSet, v []introspection.EnumValue) graphql.Marshaler {
